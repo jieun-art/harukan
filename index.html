@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>하루칸 v2.20 온라인 · 월간 투두 & 5일 24시간 플래너</title>
+  <title>하루칸 v2.23 온라인 · 월간 투두 & 5일 24시간 플래너</title>
   <style>
     @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
 
@@ -968,17 +968,137 @@
       .quick-category-picker { padding-left: 8px; padding-right: 8px; }
     }
 
+    .mobile-panel-nav { display: none; }
+
     @media (max-width: 760px) {
       .inline-form { grid-template-columns: 1fr auto; }
       .inline-form > #categoryName { grid-column: 1 / -1; }
       .category-color-trigger { min-width: 126px; }
       .hsb-number-grid { grid-template-columns: 1fr 1fr 1fr; }
-      .app { padding: 10px; }
-      .brand-row { align-items: flex-start; }
+      body { overflow: hidden; }
+      .app { height: 100dvh; min-height: 0; padding: 10px; overflow: hidden; }
+      /* 모바일 상단은 브랜드 1줄 + 가로 스크롤 버튼 1줄로 압축합니다. */
+      .top-shell { backdrop-filter: blur(12px); }
+      .brand-row {
+        display: block;
+        margin-bottom: 7px;
+      }
+      .brand {
+        min-width: 0;
+        gap: 8px;
+        padding: 0 2px;
+      }
+      .brand-mark {
+        width: 34px;
+        height: 34px;
+        border-radius: 12px;
+        font-size: 14px;
+        flex: 0 0 auto;
+      }
+      .brand h1 { font-size: 18px; line-height: 1.05; }
+      .brand p {
+        max-width: calc(100vw - 68px);
+        margin-top: 1px;
+        font-size: 10px;
+        line-height: 1.15;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .top-actions {
+        width: 100%;
+        margin-top: 7px;
+        display: flex;
+        flex-wrap: nowrap;
+        justify-content: flex-start;
+        gap: 6px;
+        overflow-x: auto;
+        overflow-y: hidden;
+        padding: 1px 2px 4px;
+        scrollbar-width: none;
+        overscroll-behavior-x: contain;
+        -webkit-overflow-scrolling: touch;
+      }
+      .top-actions::-webkit-scrollbar { display: none; }
+      .top-actions .btn {
+        flex: 0 0 40px;
+        width: 40px;
+        height: 40px;
+        min-width: 40px;
+        padding: 0;
+        border-radius: 13px;
+        justify-content: center;
+        font-size: 15px;
+      }
       .top-actions .btn span { display: none; }
-      .workspace { grid-template-columns: 1fr; }
+      .top-actions #todayBtn {
+        flex-basis: auto;
+        width: auto;
+        min-width: 56px;
+        padding: 0 13px;
+        font-size: 13px;
+      }
+      .top-actions #newTaskBtn {
+        flex-basis: auto;
+        width: auto;
+        min-width: 94px;
+        padding: 0 14px;
+        font-size: 13px;
+      }
+      .top-actions .sync-badge {
+        flex: 0 0 auto;
+        max-width: 92px;
+        height: 40px;
+        padding: 0 10px;
+        border-radius: 13px;
+        font-size: 10px;
+      }
+
+      .mobile-panel-nav {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 6px;
+        margin: 0 0 8px;
+        padding: 4px;
+        border: 1px solid var(--line);
+        border-radius: 15px;
+        background: rgba(255,255,255,.94);
+      }
+      .mobile-panel-tab {
+        border: 0;
+        border-radius: 11px;
+        background: transparent;
+        padding: 9px 6px;
+        font-size: 12px;
+        font-weight: 900;
+        color: var(--muted);
+        cursor: pointer;
+      }
+      .mobile-panel-tab.active { background: #252525; color: white; }
+
+      .workspace {
+        display: flex;
+        min-height: 0;
+        gap: 10px;
+        overflow-x: auto;
+        overflow-y: hidden;
+        scroll-snap-type: x mandatory;
+        scroll-behavior: smooth;
+        overscroll-behavior-x: contain;
+        scrollbar-width: none;
+        touch-action: pan-x pan-y;
+      }
+      .workspace::-webkit-scrollbar { display: none; }
+      .workspace > .panel {
+        flex: 0 0 calc(100vw - 20px);
+        width: calc(100vw - 20px);
+        min-width: calc(100vw - 20px);
+        min-height: 0;
+        height: 100%;
+        scroll-snap-align: start;
+        scroll-snap-stop: always;
+      }
       .timeline-panel { grid-column: auto; }
-      .panel { min-height: 600px; }
       .form-grid { grid-template-columns: 1fr; }
       .font-option-grid { grid-template-columns: 1fr; }
       .field.full { grid-column: auto; }
@@ -995,7 +1115,7 @@
           <div class="brand-mark">24</div>
           <div>
             <h1>하루칸</h1>
-            <p>월간 투두 · 반복 습관 · 5일 타임블록 · v2.20 온라인</p>
+            <p>월간 투두 · 반복 습관 · 5일 타임블록 · v2.23 온라인</p>
           </div>
         </div>
         <div class="top-actions">
@@ -1015,7 +1135,13 @@
       </div>
     </header>
 
-    <main class="workspace">
+    <nav class="mobile-panel-nav" id="mobilePanelNav" aria-label="모바일 화면 전환">
+      <button type="button" class="mobile-panel-tab active" data-panel-index="0">월간</button>
+      <button type="button" class="mobile-panel-tab" data-panel-index="1">오늘</button>
+      <button type="button" class="mobile-panel-tab" data-panel-index="2">시간표</button>
+    </nav>
+
+    <main class="workspace" id="workspace">
       <section class="panel month-panel">
         <div class="panel-head">
           <div>
@@ -1486,6 +1612,24 @@
          badge.className = `sync-badge ${mode}`.trim();
        }
 
+       async function refreshSignedInUser() {
+         if (!cloud) return signedInUser;
+         try {
+           const { data, error } = await cloud.auth.getSession();
+           if (error) throw error;
+           const sessionUser = data.session?.user || null;
+           if (sessionUser) {
+             signedInUser = sessionUser;
+             cloudReady = true;
+             updateAuthUI();
+           }
+           return signedInUser;
+         } catch (error) {
+           console.error('Session refresh failed:', error);
+           return signedInUser;
+         }
+       }
+
        function saveState() {
          localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
          if (!signedInUser || !cloudReady || applyingRemoteState) {
@@ -1497,20 +1641,25 @@
          cloudSaveTimer = setTimeout(saveStateToCloud, 450);
        }
 
-       async function saveStateToCloud() {
-         if (!cloud || !signedInUser || !cloudReady || applyingRemoteState) return;
-         const { error } = await cloud.from('harukan_data').upsert({
-           user_id: signedInUser.id,
-           planner_data: state,
-           updated_at: new Date().toISOString()
-         }, { onConflict: 'user_id' });
-         if (error) {
+       async function saveStateToCloud(force = false) {
+         if (!cloud || !signedInUser || applyingRemoteState) return false;
+         if (!cloudReady && !force) return false;
+         try {
+           const { error } = await cloud.from('harukan_data').upsert({
+             user_id: signedInUser.id,
+             planner_data: state,
+             updated_at: new Date().toISOString()
+           }, { onConflict: 'user_id' });
+           if (error) throw error;
+           cloudReady = true;
+           setSyncBadge('온라인 저장됨', 'online');
+           return true;
+         } catch (error) {
            console.error('Cloud save failed:', error);
            setSyncBadge('연동 오류');
-           toast('온라인 저장에 실패했습니다. 인터넷 연결을 확인하세요.');
-           return;
+           toast(`온라인 저장 실패: ${error?.message || '연결 상태를 확인하세요.'}`);
+           return false;
          }
-         setSyncBadge('온라인 저장됨', 'online');
        }
 
        async function loadStateFromCloud() {
@@ -1580,11 +1729,37 @@
 
          cloud.auth.onAuthStateChange(async (event, session) => {
            const previousId = signedInUser?.id;
-           signedInUser = session?.user || null;
-           cloudReady = false;
+           const nextUser = session?.user || null;
+
+           // 명시적인 로그아웃일 때만 온라인 모드를 해제합니다.
+           // 파일 선택기 복귀나 토큰 갱신 중 session이 잠깐 비는 경우에는 기존 로그인 상태를 유지합니다.
+           if (event === 'SIGNED_OUT') {
+             signedInUser = null;
+             cloudReady = false;
+             updateAuthUI();
+             setSyncBadge('로컬 저장');
+             return;
+           }
+
+           if (!nextUser) {
+             if (signedInUser) {
+               cloudReady = true;
+               setSyncBadge('온라인 연동 중', 'online');
+             }
+             return;
+           }
+
+           const userChanged = nextUser.id !== previousId;
+           signedInUser = nextUser;
            updateAuthUI();
-           if (signedInUser && signedInUser.id !== previousId) await loadStateFromCloud();
-           if (!signedInUser) setSyncBadge('로컬 저장');
+
+           if (userChanged) {
+             cloudReady = false;
+             await loadStateFromCloud();
+           } else {
+             cloudReady = true;
+             setSyncBadge('온라인 연동 중', 'online');
+           }
          });
        }
 
@@ -3079,15 +3254,23 @@
             renderAll();
             $('#dataModalBackdrop').classList.remove('open');
 
-            // 로그인 상태라면 예약 저장을 기다리지 않고 즉시 Supabase에 업로드합니다.
-            if (signedInUser && cloudReady) {
+            // 파일 선택기에서 돌아온 직후 세션을 다시 확인합니다.
+            // 백업 내용은 일정 데이터만 교체하며 로그인·온라인 연동 상태는 절대 바꾸지 않습니다.
+            await refreshSignedInUser();
+            if (signedInUser) {
               clearTimeout(cloudSaveTimer);
+              cloudReady = true;
+              updateAuthUI();
               setSyncBadge('백업 업로드 중…', 'saving');
-              await saveStateToCloud();
-              toast('백업 데이터를 불러와 온라인에도 저장했습니다.');
+              const saved = await saveStateToCloud(true);
+              if (saved) toast('백업 데이터를 불러와 온라인에도 저장했습니다.');
+              else {
+                setSyncBadge('온라인 연동 오류');
+                toast('백업은 이 기기에 불러왔지만 온라인 업로드는 실패했습니다.');
+              }
             } else {
-              setSyncBadge('로컬 저장');
-              toast('백업 데이터를 불러왔습니다. 온라인 저장은 로그인 후 진행됩니다.');
+              setSyncBadge('로그인 확인 필요');
+              toast('로그인 세션을 확인하지 못했습니다. 다시 로그인한 뒤 백업을 불러와 주세요.');
             }
           } catch (error) {
             console.error('Backup import failed:', error);
@@ -3096,6 +3279,46 @@
           e.target.value='';
         };
         reader.readAsText(file);
+      }
+
+      function initializeMobilePanelNavigation() {
+        const workspace = document.getElementById('workspace');
+        const nav = document.getElementById('mobilePanelNav');
+        if (!workspace || !nav) return;
+        const tabs = [...nav.querySelectorAll('.mobile-panel-tab')];
+        const panels = [...workspace.children];
+
+        const setActive = index => {
+          tabs.forEach((tab, i) => tab.classList.toggle('active', i === index));
+        };
+
+        tabs.forEach((tab, index) => {
+          tab.addEventListener('click', () => {
+            const panel = panels[index];
+            if (!panel) return;
+            workspace.scrollTo({ left: panel.offsetLeft - workspace.offsetLeft, behavior: 'smooth' });
+            setActive(index);
+          });
+        });
+
+        let scrollTimer = null;
+        workspace.addEventListener('scroll', () => {
+          clearTimeout(scrollTimer);
+          scrollTimer = setTimeout(() => {
+            const center = workspace.scrollLeft + workspace.clientWidth / 2;
+            let bestIndex = 0;
+            let bestDistance = Infinity;
+            panels.forEach((panel, index) => {
+              const panelCenter = panel.offsetLeft - workspace.offsetLeft + panel.offsetWidth / 2;
+              const distance = Math.abs(center - panelCenter);
+              if (distance < bestDistance) {
+                bestDistance = distance;
+                bestIndex = index;
+              }
+            });
+            setActive(bestIndex);
+          }, 60);
+        }, { passive: true });
       }
 
       function addDemoDataIfEmpty() {
@@ -3119,6 +3342,7 @@
       applyFont(currentFontKey(), false);
       renderAll();
       initializeCloudAuth();
+      initializeMobilePanelNavigation();
       setTimeout(scrollTimelineToNow, 100);
       setInterval(()=>{ if(state.selectedDate===isoLocal(new Date())) renderTimeline(); }, 60000);
     })();
