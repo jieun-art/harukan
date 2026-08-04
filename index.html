@@ -1063,7 +1063,7 @@
       .timeline-panel.mobile-active { display: block; }
       .timeline-scroll { overflow-x: hidden; overflow-y: visible; background: transparent; }
       .timeline-board { min-width: 0; width: 100%; }
-      .timeline-date-row { position: sticky; top: 42px; z-index: 24; grid-template-columns: 38px repeat(5, minmax(0,1fr)); margin: 0; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; box-shadow: none; background: rgba(255,255,255,.97); }
+      .timeline-date-row { position: static; top: auto; z-index: 1; grid-template-columns: 38px repeat(5, minmax(0,1fr)); margin: 0; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; box-shadow: none; background: #fff; }
       .timeline-date-spacer { border-right: 1px solid var(--line); }
       .timeline-date-cell { padding: 7px 1px 6px; border-left: 1px solid var(--line); }
       .timeline-date-cell strong { font-size: 10px; white-space: nowrap; letter-spacing: -.4px; }
@@ -1096,7 +1096,7 @@
           <div class="brand-mark">24</div>
           <div>
             <h1>하루칸</h1>
-            <p>월간 투두 · 반복 습관 · 5일 타임블록 · v2.26 온라인</p>
+            <p>월간 투두 · 반복 습관 · 5일 타임블록 · v2.29 온라인</p>
           </div>
         </div>
         <div class="top-actions">
@@ -1452,6 +1452,10 @@
       const WEEK_EN = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
       const HOUR_PX = 60;
       const SNAP = 15;
+      const TIMELINE_START_MIN = 6 * 60; // 시간표 표시 순서: 06:00~23:59, 그 다음 00:00~05:59
+
+      const clockToTimelineMin = minute => (minute - TIMELINE_START_MIN + 1440) % 1440;
+      const timelineToClockMin = displayMinute => (displayMinute + TIMELINE_START_MIN) % 1440;
 
 
       const SUPABASE_URL = 'https://uuigpjntcbxbvledrrlz.supabase.co';
@@ -2324,11 +2328,12 @@
         });
 
         els.timelineCanvas.querySelectorAll('.hour-line').forEach(n => n.remove());
-        for (let h=0; h<24; h++) {
+        for (let displayHour=0; displayHour<24; displayHour++) {
+          const clockHour = (displayHour + 6) % 24;
           const line = document.createElement('div');
           line.className = 'hour-line';
-          line.style.top = `${h*HOUR_PX}px`;
-          line.innerHTML = `<span class="hour-label">${pad(h)}:00</span>`;
+          line.style.top = `${displayHour*HOUR_PX}px`;
+          line.innerHTML = `<span class="hour-label">${pad(clockHour)}:00</span>`;
           els.timelineCanvas.insertBefore(line, els.timelineLanes);
         }
 
@@ -2346,7 +2351,7 @@
             block.dataset.instanceId = o.instanceId;
             block.dataset.date = iso;
             block.style.setProperty('--block-color', c.color);
-            block.style.top = `${o.startMin}px`;
+            block.style.top = `${clockToTimelineMin(o.startMin)}px`;
             block.style.height = `${Math.max(24, o.duration)}px`;
             block.innerHTML = `<div class="block-title">${escapeHTML(o.title)}</div><div class="block-time">${minutesToTime(o.startMin)}–${minutesToTime(o.startMin+o.duration)}</div><button class="block-check" title="완료">${o.completed ? '✓' : '○'}</button><div class="resize-handle"></div>`;
             block.querySelector('.block-check').addEventListener('pointerdown', e => e.stopPropagation());
@@ -2360,7 +2365,7 @@
             const now = new Date();
             const nowLine = document.createElement('div');
             nowLine.className = 'now-line';
-            nowLine.style.top = `${now.getHours()*60 + now.getMinutes()}px`;
+            nowLine.style.top = `${clockToTimelineMin(now.getHours()*60 + now.getMinutes())}px`;
             lane.appendChild(nowLine);
           }
           els.timelineLanes.appendChild(lane);
@@ -2397,6 +2402,7 @@
           targetDate: occ.date,
           targetDayIndex: originalDayIndex,
           originalStart: occ.startMin,
+          originalDisplayStart: clockToTimelineMin(occ.startMin),
           originalDuration: occ.duration,
           startX: e.clientX,
           startY: e.clientY,
@@ -2439,14 +2445,15 @@
               markTimelineDropTarget(target.date);
               const xShift = (target.index - pointerAction.originalDayIndex) * target.laneWidth;
               block.style.transform = `translateX(${xShift}px)`;
-              const next = clamp(pointerAction.originalStart + deltaY, 0, 1440 - pointerAction.originalDuration);
-              block.style.top = `${next}px`;
-              block.querySelector('.block-time').textContent = `${minutesToTime(next)}–${minutesToTime(next+pointerAction.originalDuration)}`;
+              const nextDisplay = clamp(pointerAction.originalDisplayStart + deltaY, 0, 1440 - pointerAction.originalDuration);
+              const nextClock = timelineToClockMin(nextDisplay);
+              block.style.top = `${nextDisplay}px`;
+              block.querySelector('.block-time').textContent = `${minutesToTime(nextClock)}–${minutesToTime((nextClock+pointerAction.originalDuration) % 1440)}`;
             }
           } else {
-            const nextDur = clamp(pointerAction.originalDuration + deltaY, 15, 1440 - pointerAction.originalStart);
+            const nextDur = clamp(pointerAction.originalDuration + deltaY, 15, 1440 - pointerAction.originalDisplayStart);
             block.style.height = `${Math.max(24,nextDur)}px`;
-            block.querySelector('.block-time').textContent = `${minutesToTime(pointerAction.originalStart)}–${minutesToTime(pointerAction.originalStart+nextDur)}`;
+            block.querySelector('.block-time').textContent = `${minutesToTime(pointerAction.originalStart)}–${minutesToTime((pointerAction.originalStart+nextDur) % 1440)}`;
           }
         };
         const onUp = ev => {
@@ -2457,11 +2464,12 @@
             clearOccurrenceSchedule(action.instanceId);
             toast('해당 일정만 시간표에서 뺐습니다.');
           } else if (action.type === 'move') {
-            const next = clamp(action.originalStart + deltaY, 0, 1440 - action.originalDuration);
-            setOccurrenceSchedule(action.instanceId, next, action.originalDuration, action.targetDate);
+            const nextDisplay = clamp(action.originalDisplayStart + deltaY, 0, 1440 - action.originalDuration);
+            const nextClock = timelineToClockMin(nextDisplay);
+            setOccurrenceSchedule(action.instanceId, nextClock, action.originalDuration, action.targetDate);
             if (action.targetDate !== action.originalDate) toast(`${formatKoreanDate(action.targetDate, false)} 일정으로 옮겼습니다.`);
           } else {
-            const nextDur = clamp(action.originalDuration + deltaY, 15, 1440 - action.originalStart);
+            const nextDur = clamp(action.originalDuration + deltaY, 15, 1440 - action.originalDisplayStart);
             setOccurrenceSchedule(action.instanceId, action.originalStart, nextDur, action.originalDate);
           }
           cleanupDragUI();
@@ -3167,7 +3175,8 @@
           }
           if(!occ) occ = getOccurrencesForDate(state.selectedDate).find(o=>o.instanceId===instanceId);
           if(!occ) return;
-          const start=clamp(snap(y),0,1440-occ.duration);
+          const displayStart=clamp(snap(y),0,1440-occ.duration);
+          const start=timelineToClockMin(displayStart);
           setOccurrenceSchedule(instanceId,start,occ.duration,target.date);
           document.body.classList.remove('is-dragging');
           if (target.date !== occ.date) toast(`${formatKoreanDate(target.date, false)} 일정으로 옮겼습니다.`);
@@ -3208,7 +3217,7 @@
           if (firstScheduled) minute = firstScheduled.startMin;
           toast('현재 보이는 5일에 오늘이 포함되어 있지 않습니다.');
         }
-        els.timelineScroll.scrollTop = Math.max(0, minute - 150);
+        els.timelineScroll.scrollTop = Math.max(0, clockToTimelineMin(minute) - 150);
       }
 
       function exportData() {
@@ -3273,7 +3282,10 @@
           tabs.forEach((tab, i) => tab.classList.toggle('active', i === index));
           panels.forEach((panel, i) => panel.classList.toggle('mobile-active', i === index));
           if (window.matchMedia('(max-width: 760px)').matches) {
-            requestAnimationFrame(() => window.scrollTo({ top: nav.offsetTop, behavior: 'smooth' }));
+            requestAnimationFrame(() => {
+              window.scrollTo({ top: nav.offsetTop, behavior: 'smooth' });
+              if (index === 2) els.timelineScroll.scrollTop = 0;
+            });
           }
         };
 
@@ -3303,7 +3315,7 @@
       renderAll();
       initializeCloudAuth();
       initializeMobilePanelNavigation();
-      setTimeout(scrollTimelineToNow, 100);
+      setTimeout(() => { els.timelineScroll.scrollTop = 0; }, 100);
       setInterval(()=>{ if(state.selectedDate===isoLocal(new Date())) renderTimeline(); }, 60000);
     })();
   </script>
