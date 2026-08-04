@@ -1086,6 +1086,45 @@
       .field.full { grid-column: auto; }
       #taskNote { height: clamp(150px, 24vh, 230px); min-height: 150px; }
     }
+  
+
+    /* v2.30 모바일 고정 컨트롤 및 목록 밀도 조정 */
+    .mobile-sticky-stack { display: contents; }
+
+    @media (max-width: 760px) {
+      .mobile-sticky-stack {
+        display: block;
+        position: sticky;
+        top: 0;
+        z-index: 80;
+        width: 100%;
+        background: rgba(255,255,255,.98);
+        box-shadow: 0 1px 0 var(--line);
+      }
+      .mobile-sticky-stack .top-actions {
+        margin-top: 0;
+        padding-top: 4px;
+      }
+      .mobile-sticky-stack .dday-strip {
+        margin-top: 3px;
+      }
+      .mobile-sticky-stack .mobile-panel-nav {
+        position: static;
+        top: auto;
+      }
+
+      /* 오늘 화면의 해야 할 일/완료 목록은 빈틈 없이 붙입니다. */
+      .day-panel .task-group { margin-bottom: 0; }
+      .day-panel .task-list { gap: 0; }
+      .day-panel .task-row {
+        padding-top: 7px;
+        padding-bottom: 7px;
+      }
+      .day-panel .task-group + .task-group .task-group-title {
+        margin-top: 0;
+      }
+    }
+
   </style>
 </head>
 <body>
@@ -1096,7 +1135,7 @@
           <div class="brand-mark">24</div>
           <div>
             <h1>하루칸</h1>
-            <p>월간 투두 · 반복 습관 · 5일 타임블록 · v2.29 온라인</p>
+            <p>월간 투두 · 반복 습관 · 5일 타임블록 · v2.30 온라인</p>
           </div>
         </div>
         <div class="top-actions">
@@ -3319,5 +3358,45 @@
       setInterval(()=>{ if(state.selectedDate===isoLocal(new Date())) renderTimeline(); }, 60000);
     })();
   </script>
+
+  <script>
+    (() => {
+      const mq = window.matchMedia('(max-width: 760px)');
+      const brandRow = document.querySelector('.brand-row');
+      const topShell = document.querySelector('.top-shell');
+      const topActions = document.querySelector('.top-actions');
+      const ddayStrip = document.getElementById('ddayStrip');
+      const mobileNav = document.getElementById('mobilePanelNav');
+      if (!brandRow || !topShell || !topActions || !ddayStrip || !mobileNav) return;
+
+      const actionAnchor = document.createComment('top-actions-anchor');
+      const ddayAnchor = document.createComment('dday-strip-anchor');
+      const navAnchor = document.createComment('mobile-nav-anchor');
+      topActions.before(actionAnchor);
+      ddayStrip.before(ddayAnchor);
+      mobileNav.before(navAnchor);
+
+      const stack = document.createElement('div');
+      stack.className = 'mobile-sticky-stack';
+      stack.setAttribute('aria-label', '모바일 고정 기능 영역');
+
+      function applyLayout() {
+        if (mq.matches) {
+          if (!stack.isConnected) topShell.after(stack);
+          stack.append(topActions, ddayStrip, mobileNav);
+        } else {
+          actionAnchor.after(topActions);
+          ddayAnchor.after(ddayStrip);
+          navAnchor.after(mobileNav);
+          stack.remove();
+        }
+      }
+
+      applyLayout();
+      if (mq.addEventListener) mq.addEventListener('change', applyLayout);
+      else mq.addListener(applyLayout);
+    })();
+  </script>
+
 </body>
 </html>
