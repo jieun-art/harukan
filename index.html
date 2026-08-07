@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>하루칸 v2.37 온라인 · 월간 투두 & 5일 24시간 플래너</title>
+  <title>하루칸 v2.42 온라인 · 월간 투두 & 5일 24시간 플래너</title>
   <style>
     @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
 
@@ -637,42 +637,39 @@
     .time-block {
       --block-color: #8f9;
       --block-text: #252525;
+      --overlap-shift: 0px;
       position: absolute;
-      left: 5px;
+      left: calc(5px + var(--overlap-shift));
       right: 5px;
-      min-height: 24px;
-      border: 1px solid color-mix(in srgb, var(--block-color) 74%, #000);
-      border-radius: 12px;
+      min-height: 29px;
+      border: 0;
+      border-radius: 0;
       background: var(--block-color);
       color: var(--block-text);
       padding: 6px 30px 7px 9px;
       cursor: grab;
       overflow: hidden;
       user-select: none;
-      box-shadow: 0 5px 14px rgba(30,30,30,.07);
+      box-shadow: 0 2px 7px rgba(30,30,30,.14);
     }
-    .time-block:hover { z-index: 10; filter: saturate(1.06); }
+    .time-block:hover { filter: saturate(1.06); box-shadow: 0 4px 12px rgba(30,30,30,.18); }
     /* 완료 일정은 오늘을 중심으로만 잠시 흐려지고, 3일 이상 멀어지면 기록처럼 원래 색으로 복원됩니다. */
     .time-block.done {
       opacity: 1;
       color: #252525;
       background: color-mix(in srgb, var(--block-color) 13%, transparent);
-      border-color: color-mix(in srgb, var(--block-color) 13%, transparent);
-      box-shadow: none;
+      box-shadow: 0 1px 4px rgba(30,30,30,.08);
     }
     .time-block.done.done-near-1 {
       background: color-mix(in srgb, var(--block-color) 40%, transparent);
-      border-color: color-mix(in srgb, var(--block-color) 40%, transparent);
     }
     .time-block.done.done-near-2 {
       background: color-mix(in srgb, var(--block-color) 65%, transparent);
-      border-color: color-mix(in srgb, var(--block-color) 65%, transparent);
     }
     .time-block.done.done-restored {
       color: var(--block-text);
       background: var(--block-color);
-      border-color: color-mix(in srgb, var(--block-color) 74%, #000);
-      box-shadow: 0 5px 14px rgba(30,30,30,.07);
+      box-shadow: 0 2px 7px rgba(30,30,30,.14);
     }
     .time-block.remove-candidate {
       opacity: .48;
@@ -1164,7 +1161,7 @@
       .hour-line::after { left: 38px; }
       .hour-label { width: 34px; left: 0; padding-right: 3px; font-size: 9px; }
       .timeline-day-lane { border-left: 1px solid #e5e5e1; }
-      .time-block { left: 1px; right: 1px; min-height: 18px; border-radius: 5px; padding: 3px 13px 3px 3px; box-shadow: none; }
+      .time-block { left: calc(1px + var(--overlap-shift)); right: 1px; min-height: 29px; border-radius: 0; padding: 3px 13px 3px 3px; box-shadow: 0 2px 6px rgba(30,30,30,.12); }
       .block-title { font-size: 8px; line-height: 1.15; }
       .block-time { display: none; }
       .block-check { right: 1px; top: 2px; transform: none; width: 12px; height: 12px; border-radius: 4px; }
@@ -1219,7 +1216,7 @@
           <div class="brand-mark">24</div>
           <div>
             <h1>하루칸</h1>
-            <p>월간 투두 · 반복 습관 · 5일 타임블록 · v2.37 온라인</p>
+            <p>월간 투두 · 반복 습관 · 5일 타임블록 · v2.42 온라인</p>
           </div>
         </div>
         <div class="top-actions">
@@ -1575,10 +1572,14 @@
       const WEEK_EN = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
       const HOUR_PX = 60;
       const SNAP = 15;
+      const MIN_DURATION = 30;
+      const TIMELINE_BLOCK_GAP_PX = 1;
+      const TIMELINE_OVERLAP_STEP_PX = 4;
       const TIMELINE_START_MIN = 6 * 60; // 시간표 표시 순서: 06:00~23:59, 그 다음 00:00~05:59
 
       const clockToTimelineMin = minute => (minute - TIMELINE_START_MIN + 1440) % 1440;
       const timelineToClockMin = displayMinute => (displayMinute + TIMELINE_START_MIN) % 1440;
+      const timelineBlockHeightPx = duration => Math.max(MIN_DURATION - TIMELINE_BLOCK_GAP_PX, duration - TIMELINE_BLOCK_GAP_PX);
 
 
       const SUPABASE_URL = 'https://uuigpjntcbxbvledrrlz.supabase.co';
@@ -1620,6 +1621,29 @@
         return ((r * 299 + g * 587 + b * 114) / 1000) >= 155 ? '#252525' : '#ffffff';
       };
 
+      function normalizeDurationValue(value, fallback = 60) {
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric)) return fallback;
+        return Math.max(MIN_DURATION, numeric);
+      }
+
+      function normalizeStateDurations(targetState) {
+        let changed = false;
+        const normalizeItem = item => {
+          if (!item || item.duration === undefined) return;
+          const normalized = normalizeDurationValue(item.duration);
+          if (Number(item.duration) !== normalized) {
+            item.duration = normalized;
+            changed = true;
+          }
+        };
+        (targetState.tasks || []).forEach(normalizeItem);
+        (targetState.habits || []).forEach(normalizeItem);
+        Object.values(targetState.habitOverrides || {}).forEach(normalizeItem);
+        Object.values(targetState.ddayOverrides || {}).forEach(normalizeItem);
+        return changed;
+      }
+
       const today = new Date();
       const todayISO = isoLocal(today);
 
@@ -1648,6 +1672,9 @@
       });
 
       let state = loadState();
+      if (normalizeStateDurations(state)) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      }
       let dragPayload = null;
       let pointerAction = null;
       let toastTimer = null;
@@ -1782,6 +1809,7 @@
 
        async function loadStateFromCloud() {
          if (!cloud || !signedInUser) return;
+         let migratedRemoteDurations = false;
          setSyncBadge('불러오는 중…', 'saving');
          const { data, error } = await cloud
            .from('harukan_data')
@@ -1809,6 +1837,7 @@
            state.ddayCompletions = remote.ddayCompletions || {};
            state.ddayOverrides = remote.ddayOverrides || {};
            state.settings = { ...defaultState().settings, ...(remote.settings || {}) };
+           migratedRemoteDurations = normalizeStateDurations(state);
            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
            applyFont(state.settings.fontKey, false);
            renderAll();
@@ -1817,6 +1846,7 @@
          }
          cloudReady = true;
          if (!data) await saveStateToCloud();
+         else if (migratedRemoteDurations) await saveStateToCloud(true);
          else setSyncBadge('온라인 연동 중', 'online');
        }
 
@@ -2174,7 +2204,7 @@
 
       function setOccurrenceSchedule(instanceId, startMin, duration, targetDate = null) {
         startMin = startMin === null ? null : clamp(snap(startMin), 0, 24*60-15);
-        duration = clamp(snap(duration || 60), 15, 24*60 - (startMin || 0));
+        duration = clamp(snap(duration || 60), MIN_DURATION, Math.max(MIN_DURATION, 24*60 - (startMin || 0)));
         if (instanceId.startsWith('habit:')) {
           const [, habitId, sourceIso] = instanceId.split(':');
           const key = habitKey(habitId, sourceIso);
@@ -2498,8 +2528,20 @@
           lane.className = `timeline-day-lane ${iso === todayISO ? 'today' : ''}`;
           lane.dataset.date = iso;
           lane.dataset.dayIndex = String(dayIndex);
-          const scheduled = getOccurrencesForDate(iso).filter(o => o.startMin !== null).sort(sortOccurrences);
+          const scheduled = getOccurrencesForDate(iso)
+            .filter(o => o.startMin !== null)
+            .sort((a, b) => {
+              const aStart = clockToTimelineMin(a.startMin);
+              const bStart = clockToTimelineMin(b.startMin);
+              return aStart - bStart || (b.duration || 0) - (a.duration || 0) || a.title.localeCompare(b.title, 'ko');
+            });
+          const overlapEnds = [];
           scheduled.forEach(o => {
+            const displayStart = clockToTimelineMin(o.startMin);
+            const displayEnd = displayStart + o.duration;
+            let overlapLevel = overlapEnds.findIndex(end => end <= displayStart);
+            if (overlapLevel < 0) overlapLevel = overlapEnds.length;
+            overlapEnds[overlapLevel] = displayEnd;
             const c = occurrenceCategory(o);
             const block = document.createElement('div');
             const completedDistance = Math.abs(dateDiffDays(iso, todayISO));
@@ -2515,8 +2557,12 @@
             block.dataset.date = iso;
             block.style.setProperty('--block-color', c.color);
             block.style.setProperty('--block-text', readableTextColor(c.color));
-            block.style.top = `${clockToTimelineMin(o.startMin)}px`;
-            block.style.height = `${Math.max(24, o.duration)}px`;
+            block.style.setProperty('--overlap-shift', `${Math.min(overlapLevel, 3) * TIMELINE_OVERLAP_STEP_PX}px`);
+            // 겹치는 구간에서는 뒤에 시작한(같은 시작이면 더 짧은) 블록이 선택 우선권을 가집니다.
+            // hover 자체는 z-index를 바꾸지 않아 아래 블록이 마우스를 가로채지 않습니다.
+            block.style.zIndex = String(1 + Math.min(overlapLevel, 9));
+            block.style.top = `${displayStart}px`;
+            block.style.height = `${timelineBlockHeightPx(o.duration)}px`;
             block.innerHTML = `<div class="block-title">${escapeHTML(o.title)}</div><div class="block-time">${minutesToTime(o.startMin)}–${minutesToTime(o.startMin+o.duration)}</div><button class="block-check" title="완료"><span class="block-check-mark">${o.completed ? '✓' : ''}</span></button><div class="resize-handle"></div>`;
             block.querySelector('.block-check').addEventListener('pointerdown', e => e.stopPropagation());
             block.querySelector('.block-check').addEventListener('click', e => { e.stopPropagation(); setOccurrenceComplete(o.instanceId, !o.completed); });
@@ -2615,8 +2661,8 @@
               block.querySelector('.block-time').textContent = `${minutesToTime(nextClock)}–${minutesToTime((nextClock+pointerAction.originalDuration) % 1440)}`;
             }
           } else {
-            const nextDur = clamp(pointerAction.originalDuration + deltaY, 15, 1440 - pointerAction.originalDisplayStart);
-            block.style.height = `${Math.max(24,nextDur)}px`;
+            const nextDur = clamp(pointerAction.originalDuration + deltaY, MIN_DURATION, Math.max(MIN_DURATION, 1440 - pointerAction.originalDisplayStart));
+            block.style.height = `${timelineBlockHeightPx(nextDur)}px`;
             block.querySelector('.block-time').textContent = `${minutesToTime(pointerAction.originalStart)}–${minutesToTime((pointerAction.originalStart+nextDur) % 1440)}`;
           }
         };
@@ -2633,7 +2679,7 @@
             setOccurrenceSchedule(action.instanceId, nextClock, action.originalDuration, action.targetDate);
             if (action.targetDate !== action.originalDate) toast(`${formatKoreanDate(action.targetDate, false)} 일정으로 옮겼습니다.`);
           } else {
-            const nextDur = clamp(action.originalDuration + deltaY, 15, 1440 - action.originalDisplayStart);
+            const nextDur = clamp(action.originalDuration + deltaY, MIN_DURATION, Math.max(MIN_DURATION, 1440 - action.originalDisplayStart));
             setOccurrenceSchedule(action.instanceId, action.originalStart, nextDur, action.originalDate);
           }
           cleanupDragUI();
@@ -3261,7 +3307,7 @@
       }
 
       function initDurationOptions() {
-        const values = [15,30,45,60,90,120,150,180,240,300,360,480];
+        const values = [30,45,60,90,120,150,180,240,300,360,480];
         const html = values.map(v=>`<option value="${v}">${formatDuration(v)}</option>`).join('');
         els.taskDuration.innerHTML = html;
         els.habitDuration.innerHTML = html;
@@ -3348,7 +3394,7 @@
           const id=$('#taskId').value;
           const payload={
             title:$('#taskTitle').value.trim(), date:$('#taskDate').value, categoryId:selectedCategoryId(els.taskCategory),
-            startMin:timeToMinutes($('#taskStart').value), duration:Number($('#taskDuration').value), note:$('#taskNote').value.trim()
+            startMin:timeToMinutes($('#taskStart').value), duration:normalizeDurationValue($('#taskDuration').value), note:$('#taskNote').value.trim()
           };
           if(id){ const t=state.tasks.find(x=>x.id===id); if(t) Object.assign(t,payload); }
           else state.tasks.push({ id:uid('task'), completed:false, ...payload });
@@ -3368,7 +3414,7 @@
           const weekdays=$$('#habitWeekdays input:checked').map(i=>Number(i.value));
           if(!weekdays.length) return toast('반복 요일을 하나 이상 선택하세요.');
           const id=$('#habitId').value;
-          const payload={ title:$('#habitTitle').value.trim(), weekdays, categoryId:$('#habitCategory').value, startDate:$('#habitStartDate').value, startMin:timeToMinutes($('#habitStart').value), duration:Number($('#habitDuration').value) };
+          const payload={ title:$('#habitTitle').value.trim(), weekdays, categoryId:$('#habitCategory').value, startDate:$('#habitStartDate').value, startMin:timeToMinutes($('#habitStart').value), duration:normalizeDurationValue($('#habitDuration').value) };
           if(id){ const h=state.habits.find(x=>x.id===id); if(h) Object.assign(h,payload); }
           else state.habits.push({id:uid('habit'), ...payload});
           saveState(); resetHabitForm(); renderAll(); toast('반복 일정을 저장했습니다.');
@@ -3495,6 +3541,7 @@
             state.ddayCompletions = parsed.ddayCompletions || {};
             state.ddayOverrides = parsed.ddayOverrides || {};
             state.settings = { ...defaultState().settings, ...(parsed.settings || {}) };
+            normalizeStateDurations(state);
             applyFont(state.settings.fontKey, false);
 
             // 먼저 현재 기기에 저장하고 화면을 갱신합니다.
