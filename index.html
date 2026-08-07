@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>하루칸 v2.42 온라인 · 월간 투두 & 5일 24시간 플래너</title>
+  <title>하루칸 v2.43A 온라인 · 월간 투두 & 5일 24시간 플래너</title>
   <style>
     @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
 
@@ -259,9 +259,9 @@
     .dday-card {
       min-width: 250px;
       min-height: 62px;
-      border: 1px solid color-mix(in srgb, var(--card-color) 35%, white);
+      border: 0;
       background: color-mix(in srgb, var(--card-color) 10%, white);
-      border-radius: 15px;
+      border-radius: 0;
       padding: 9px 12px;
       cursor: pointer;
       display: grid;
@@ -269,7 +269,10 @@
       gap: 4px 12px;
       align-items: center;
       text-align: left;
+      box-shadow: 0 2px 5px rgba(30,30,30,.05);
+      transition: box-shadow .16s ease, transform .16s ease;
     }
+    .dday-card:hover { box-shadow: 0 4px 12px rgba(30,30,30,.14); transform: translateY(-1px); }
     .dday-card strong { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .dday-card .count {
       grid-row: 1 / 3; grid-column: 2; color: var(--card-color);
@@ -1088,7 +1091,7 @@
       /* D-Day도 카드 느낌을 줄이고 선 중심으로 압축 */
       .dday-strip { min-height: 0; padding: 5px 0; gap: 6px; border: 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); border-radius: 0; box-shadow: none; background: transparent; }
       .dday-title { min-width: 62px; min-height: 48px; border-radius: 0; background: transparent; border-right: 1px solid var(--line); font-size: 11px; }
-      .dday-card { min-width: 205px; min-height: 48px; border-radius: 8px; padding: 6px 9px; box-shadow: none; }
+      .dday-card { min-width: 205px; min-height: 48px; border: 0; border-radius: 0; padding: 6px 9px; box-shadow: 0 2px 5px rgba(30,30,30,.10); }
 
       .mobile-panel-nav {
         display: grid;
@@ -1216,7 +1219,7 @@
           <div class="brand-mark">24</div>
           <div>
             <h1>하루칸</h1>
-            <p>월간 투두 · 반복 습관 · 5일 타임블록 · v2.42 온라인</p>
+            <p>월간 투두 · 반복 습관 · 5일 타임블록 · v2.43A 온라인</p>
           </div>
         </div>
         <div class="top-actions">
