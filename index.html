@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>하루칸 v2.44A 온라인 · 월간 투두 & 5일 24시간 플래너</title>
+  <title>하루칸 v2.45A 온라인 · 월간 투두 & 5일 24시간 플래너</title>
   <style>
     @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
 
@@ -1238,7 +1238,7 @@
           <div class="brand-mark">24</div>
           <div>
             <h1>하루칸</h1>
-            <p>월간 투두 · 반복 습관 · 5일 타임블록 · v2.44A 온라인</p>
+            <p>월간 투두 · 반복 습관 · 5일 타임블록 · v2.45A 온라인</p>
           </div>
         </div>
         <div class="top-actions">
@@ -1632,6 +1632,13 @@
       let cloudReady = false;
       let applyingRemoteState = false;
       let cloudSaveTimer = null;
+      let cloudSaveChain = Promise.resolve();
+      let cloudRefreshPromise = null;
+      let lastServerUpdatedAt = null;
+      let baseCloudState = null;
+      let localDirty = false;
+      let realtimeChannel = null;
+      let lastCloudRefreshAt = 0;
 
       const pad = n => String(n).padStart(2, '0');
       const isoLocal = date => `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}`;
@@ -1819,7 +1826,6 @@
            const sessionUser = data.session?.user || null;
            if (sessionUser) {
              signedInUser = sessionUser;
-             cloudReady = true;
              updateAuthUI();
            }
            return signedInUser;
@@ -1829,80 +1835,345 @@
          }
        }
 
+       const cloneState = value => JSON.parse(JSON.stringify(value));
+       const sameValue = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+
+       function normalizeRemoteState(remote) {
+         const normalized = { ...defaultState(), ...(remote || {}) };
+         normalized.categories = Array.isArray(remote?.categories) && remote.categories.length ? remote.categories : defaultState().categories;
+         normalized.tasks = Array.isArray(remote?.tasks) ? remote.tasks : [];
+         normalized.habits = Array.isArray(remote?.habits) ? remote.habits : [];
+         normalized.ddays = Array.isArray(remote?.ddays) ? remote.ddays : [];
+         normalized.habitCompletions = remote?.habitCompletions || {};
+         normalized.habitOverrides = remote?.habitOverrides || {};
+         normalized.occurrenceMoves = remote?.occurrenceMoves || {};
+         normalized.ddayCompletions = remote?.ddayCompletions || {};
+         normalized.ddayOverrides = remote?.ddayOverrides || {};
+         normalized.settings = { ...defaultState().settings, ...(remote?.settings || {}) };
+         normalized.settings.dayStartMin = normalizeDayStartMin(normalized.settings.dayStartMin);
+         normalizeStateDurations(normalized);
+         return normalized;
+       }
+
+       function mergeRecord(base, local, remote) {
+         const result = {};
+         const keys = new Set([
+           ...Object.keys(base || {}),
+           ...Object.keys(local || {}),
+           ...Object.keys(remote || {})
+         ]);
+         keys.forEach(key => {
+           const b = base?.[key];
+           const l = local?.[key];
+           const r = remote?.[key];
+           const localChanged = !sameValue(l, b);
+           const remoteChanged = !sameValue(r, b);
+           if (localChanged) {
+             if (l !== undefined) result[key] = cloneState(l);
+           } else if (remoteChanged) {
+             if (r !== undefined) result[key] = cloneState(r);
+           } else if (r !== undefined) result[key] = cloneState(r);
+           else if (l !== undefined) result[key] = cloneState(l);
+         });
+         return result;
+       }
+
+       function mergeArrayById(base = [], local = [], remote = []) {
+         const byId = list => new Map((list || []).filter(item => item?.id).map(item => [item.id, item]));
+         const bMap = byId(base), lMap = byId(local), rMap = byId(remote);
+         const order = [];
+         [...remote, ...local, ...base].forEach(item => {
+           if (item?.id && !order.includes(item.id)) order.push(item.id);
+         });
+         const result = [];
+         order.forEach(id => {
+           const b = bMap.get(id), l = lMap.get(id), r = rMap.get(id);
+           const localChanged = !sameValue(l, b);
+           const remoteChanged = !sameValue(r, b);
+
+           if (localChanged) {
+             if (l === undefined) return; // 이 기기에서 삭제한 항목
+             if (remoteChanged && r !== undefined && b !== undefined) result.push(mergeRecord(b, l, r));
+             else result.push(cloneState(l));
+             return;
+           }
+           if (r !== undefined) result.push(cloneState(r));
+         });
+         return result;
+       }
+
+       function mergeKeyedMap(base = {}, local = {}, remote = {}) {
+         const result = {};
+         const keys = new Set([...Object.keys(base || {}), ...Object.keys(local || {}), ...Object.keys(remote || {})]);
+         keys.forEach(key => {
+           const b = base?.[key], l = local?.[key], r = remote?.[key];
+           const localChanged = !sameValue(l, b);
+           if (localChanged) {
+             if (l !== undefined) result[key] = cloneState(l);
+           } else if (r !== undefined) result[key] = cloneState(r);
+         });
+         return result;
+       }
+
+       function mergePlannerStates(base, local, remote) {
+         const b = normalizeRemoteState(base || defaultState());
+         const l = normalizeRemoteState(local || defaultState());
+         const r = normalizeRemoteState(remote || defaultState());
+         return {
+           ...r,
+           version: Math.max(Number(l.version) || 0, Number(r.version) || 0),
+           // 선택 날짜/월은 데이터가 아니라 각 기기의 화면 위치이므로 현재 기기 값을 유지합니다.
+           selectedDate: l.selectedDate || r.selectedDate,
+           viewMonth: l.viewMonth || r.viewMonth,
+           categories: mergeArrayById(b.categories, l.categories, r.categories),
+           tasks: mergeArrayById(b.tasks, l.tasks, r.tasks),
+           habits: mergeArrayById(b.habits, l.habits, r.habits),
+           ddays: mergeArrayById(b.ddays, l.ddays, r.ddays),
+           habitCompletions: mergeKeyedMap(b.habitCompletions, l.habitCompletions, r.habitCompletions),
+           habitOverrides: mergeKeyedMap(b.habitOverrides, l.habitOverrides, r.habitOverrides),
+           occurrenceMoves: mergeKeyedMap(b.occurrenceMoves, l.occurrenceMoves, r.occurrenceMoves),
+           ddayCompletions: mergeKeyedMap(b.ddayCompletions, l.ddayCompletions, r.ddayCompletions),
+           ddayOverrides: mergeKeyedMap(b.ddayOverrides, l.ddayOverrides, r.ddayOverrides),
+           settings: mergeRecord(b.settings, l.settings, r.settings)
+         };
+       }
+
+       function applyCloudState(nextState, updatedAt, { render = true } = {}) {
+         applyingRemoteState = true;
+         state = normalizeRemoteState(nextState);
+         state.selectedDate = nextState?.selectedDate || state.selectedDate;
+         state.viewMonth = nextState?.viewMonth || state.viewMonth;
+         localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+         baseCloudState = cloneState(state);
+         lastServerUpdatedAt = updatedAt || null;
+         localDirty = false;
+         applyFont(state.settings.fontKey, false);
+         if (render) renderAll();
+         applyingRemoteState = false;
+       }
+
        function saveState() {
          localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+         if (!applyingRemoteState) localDirty = true;
          if (!signedInUser || !cloudReady || applyingRemoteState) {
            if (!signedInUser) setSyncBadge('로컬 저장');
+           else if (!cloudReady) setSyncBadge('온라인 확인 필요');
            return;
          }
          clearTimeout(cloudSaveTimer);
-         setSyncBadge('저장 중…', 'saving');
-         cloudSaveTimer = setTimeout(saveStateToCloud, 450);
+         setSyncBadge('저장 대기…', 'saving');
+         cloudSaveTimer = setTimeout(() => queueCloudSave(), 450);
        }
 
-       async function saveStateToCloud(force = false) {
+       function queueCloudSave(force = false) {
+         clearTimeout(cloudSaveTimer);
+         cloudSaveChain = cloudSaveChain
+           .catch(error => console.error('Previous cloud save failed:', error))
+           .then(() => saveStateToCloud(force));
+         return cloudSaveChain;
+       }
+
+       async function fetchCloudRow() {
+         if (!cloud || !signedInUser) return { data: null, error: null };
+         return cloud
+           .from('harukan_data')
+           .select('planner_data, updated_at')
+           .eq('user_id', signedInUser.id)
+           .maybeSingle();
+       }
+
+       async function resolveCloudConflict(localSnapshot, remoteRow, retryCount) {
+         const remoteState = normalizeRemoteState(remoteRow.planner_data);
+         const merged = mergePlannerStates(baseCloudState || remoteState, localSnapshot, remoteState);
+         applyingRemoteState = true;
+         state = merged;
+         localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+         applyingRemoteState = false;
+         baseCloudState = cloneState(remoteState);
+         lastServerUpdatedAt = remoteRow.updated_at || null;
+         localDirty = true;
+         applyFont(state.settings.fontKey, false);
+         renderAll();
+         setSyncBadge('변경사항 병합 중…', 'saving');
+         if (retryCount >= 2) {
+           toast('다른 기기의 변경을 병합했습니다. 다시 저장해 주세요.');
+           return false;
+         }
+         return saveStateToCloud(false, retryCount + 1);
+       }
+
+       async function saveStateToCloud(force = false, retryCount = 0) {
          if (!cloud || !signedInUser || applyingRemoteState) return false;
          if (!cloudReady && !force) return false;
+
+         const localSnapshot = cloneState(state);
+         const nextUpdatedAt = new Date().toISOString();
+         setSyncBadge('저장 중…', 'saving');
+
          try {
-           const { error } = await cloud.from('harukan_data').upsert({
-             user_id: signedInUser.id,
-             planner_data: state,
-             updated_at: new Date().toISOString()
-           }, { onConflict: 'user_id' });
-           if (error) throw error;
+           // 마지막으로 본 서버 버전이 없으면 먼저 서버를 확인합니다. 오래된 LocalStorage의 무조건 덮어쓰기를 막습니다.
+           if (!lastServerUpdatedAt) {
+             const { data: existing, error: readError } = await fetchCloudRow();
+             if (readError) throw readError;
+             if (existing?.planner_data) {
+               return resolveCloudConflict(localSnapshot, existing, retryCount);
+             }
+
+             const { data: inserted, error: insertError } = await cloud
+               .from('harukan_data')
+               .insert({
+                 user_id: signedInUser.id,
+                 planner_data: localSnapshot,
+                 updated_at: nextUpdatedAt
+               })
+               .select('updated_at')
+               .maybeSingle();
+             if (insertError) {
+               // 다른 기기가 같은 순간 먼저 행을 만들었을 수 있으므로 최신본을 다시 확인합니다.
+               const { data: raced, error: racedError } = await fetchCloudRow();
+               if (!racedError && raced?.planner_data) return resolveCloudConflict(localSnapshot, raced, retryCount);
+               throw insertError;
+             }
+             lastServerUpdatedAt = inserted?.updated_at || nextUpdatedAt;
+           } else {
+             // 내가 마지막으로 읽은 updated_at과 서버 값이 같을 때만 갱신합니다(CAS).
+             const { data: updated, error: updateError } = await cloud
+               .from('harukan_data')
+               .update({ planner_data: localSnapshot, updated_at: nextUpdatedAt })
+               .eq('user_id', signedInUser.id)
+               .eq('updated_at', lastServerUpdatedAt)
+               .select('updated_at')
+               .maybeSingle();
+             if (updateError) throw updateError;
+
+             if (!updated) {
+               const { data: remoteRow, error: conflictReadError } = await fetchCloudRow();
+               if (conflictReadError) throw conflictReadError;
+               if (!remoteRow?.planner_data) throw new Error('서버 최신본을 확인하지 못했습니다.');
+               return resolveCloudConflict(localSnapshot, remoteRow, retryCount);
+             }
+             lastServerUpdatedAt = updated.updated_at || nextUpdatedAt;
+           }
+
+           baseCloudState = cloneState(localSnapshot);
            cloudReady = true;
-           setSyncBadge('온라인 저장됨', 'online');
+           // 저장 중 사용자가 또 수정했으면 dirty를 유지하고 다음 저장을 이어갑니다.
+           localDirty = !sameValue(state, localSnapshot);
+           setSyncBadge(localDirty ? '추가 저장 대기…' : '온라인 저장됨', localDirty ? 'saving' : 'online');
+           if (localDirty) setTimeout(() => queueCloudSave(), 0);
            return true;
          } catch (error) {
            console.error('Cloud save failed:', error);
-           setSyncBadge('연동 오류');
-           toast(`온라인 저장 실패: ${error?.message || '연결 상태를 확인하세요.'}`);
+           // 로컬 데이터는 보존하되, 최신 서버 확인 전에는 추가 온라인 덮어쓰기를 막습니다.
+           cloudReady = false;
+           localDirty = true;
+           setSyncBadge('동기화 확인 필요');
+           toast(`온라인 저장 보류: ${error?.message || '연결 상태를 확인하세요.'}`);
            return false;
          }
        }
 
-       async function loadStateFromCloud() {
-         if (!cloud || !signedInUser) return;
-         let migratedRemoteDurations = false;
-         setSyncBadge('불러오는 중…', 'saving');
-         const { data, error } = await cloud
-           .from('harukan_data')
-           .select('planner_data')
-           .eq('user_id', signedInUser.id)
-           .maybeSingle();
-         if (error) {
-           console.error('Cloud load failed:', error);
+       async function loadStateFromCloud({ silent = false } = {}) {
+         if (!cloud || !signedInUser) return false;
+         if (cloudRefreshPromise) return cloudRefreshPromise;
+
+         cloudRefreshPromise = (async () => {
+           if (!silent) setSyncBadge('불러오는 중…', 'saving');
+           const { data, error } = await fetchCloudRow();
+           if (error) {
+             console.error('Cloud load failed:', error);
+             cloudReady = false;
+             setSyncBadge('동기화 확인 필요');
+             if (!silent) toast('온라인 데이터를 불러오지 못했습니다. 로컬 변경은 서버 확인 전까지 덮어쓰지 않습니다.');
+             return false;
+           }
+
+           if (data?.planner_data && typeof data.planner_data === 'object' && Object.keys(data.planner_data).length) {
+             applyCloudState(data.planner_data, data.updated_at);
+             if (!silent) toast('온라인 데이터를 불러왔습니다.');
+           } else {
+             // 서버에 아직 데이터가 없을 때만 현재 로컬 상태를 최초 업로드합니다.
+             lastServerUpdatedAt = null;
+             baseCloudState = null;
+             cloudReady = true;
+             localDirty = true;
+             await queueCloudSave(true);
+           }
            cloudReady = true;
-           setSyncBadge('연동 오류');
-           toast('온라인 데이터를 불러오지 못했습니다.');
-           return;
-         }
-         if (data?.planner_data && typeof data.planner_data === 'object' && Object.keys(data.planner_data).length) {
-           applyingRemoteState = true;
-           const remote = data.planner_data;
-           state = { ...defaultState(), ...remote };
-           state.categories = Array.isArray(remote.categories) && remote.categories.length ? remote.categories : defaultState().categories;
-           state.tasks = Array.isArray(remote.tasks) ? remote.tasks : [];
-           state.habits = Array.isArray(remote.habits) ? remote.habits : [];
-           state.ddays = Array.isArray(remote.ddays) ? remote.ddays : [];
-           state.habitCompletions = remote.habitCompletions || {};
-           state.habitOverrides = remote.habitOverrides || {};
-           state.occurrenceMoves = remote.occurrenceMoves || {};
-           state.ddayCompletions = remote.ddayCompletions || {};
-           state.ddayOverrides = remote.ddayOverrides || {};
-           state.settings = { ...defaultState().settings, ...(remote.settings || {}) };
-           state.settings.dayStartMin = normalizeDayStartMin(state.settings.dayStartMin);
-           migratedRemoteDurations = normalizeStateDurations(state);
-           localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-           applyFont(state.settings.fontKey, false);
-           renderAll();
-           applyingRemoteState = false;
-           toast('온라인 데이터를 불러왔습니다.');
-         }
-         cloudReady = true;
-         if (!data) await saveStateToCloud();
-         else if (migratedRemoteDurations) await saveStateToCloud(true);
-         else setSyncBadge('온라인 연동 중', 'online');
+           lastCloudRefreshAt = Date.now();
+           setSyncBadge('온라인 연동 중', 'online');
+           return true;
+         })().finally(() => { cloudRefreshPromise = null; });
+
+         return cloudRefreshPromise;
+       }
+
+       async function refreshCloudIfNewer({ silent = true } = {}) {
+         if (!cloud || !signedInUser || document.hidden) return false;
+         if (cloudRefreshPromise) return cloudRefreshPromise;
+
+         cloudRefreshPromise = (async () => {
+           const { data, error } = await fetchCloudRow();
+           if (error) {
+             console.error('Cloud refresh failed:', error);
+             cloudReady = false;
+             setSyncBadge('동기화 확인 필요');
+             return false;
+           }
+           cloudReady = true;
+           lastCloudRefreshAt = Date.now();
+           if (!data?.planner_data) return true;
+           if (data.updated_at && data.updated_at === lastServerUpdatedAt) {
+             setSyncBadge(localDirty ? '저장 대기…' : '온라인 연동 중', localDirty ? 'saving' : 'online');
+             return true;
+           }
+
+           const remoteState = normalizeRemoteState(data.planner_data);
+           if (localDirty) {
+             const merged = mergePlannerStates(baseCloudState || remoteState, state, remoteState);
+             applyingRemoteState = true;
+             state = merged;
+             localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+             applyingRemoteState = false;
+             baseCloudState = cloneState(remoteState);
+             lastServerUpdatedAt = data.updated_at || null;
+             localDirty = true;
+             applyFont(state.settings.fontKey, false);
+             renderAll();
+             setSyncBadge('다른 기기 변경 병합 중…', 'saving');
+             if (!silent) toast('다른 기기의 최신 변경을 현재 변경과 병합했습니다.');
+             setTimeout(() => queueCloudSave(), 0);
+           } else {
+             applyCloudState(remoteState, data.updated_at);
+             setSyncBadge('다른 기기 변경 반영됨', 'online');
+             if (!silent) toast('다른 기기에서 변경한 내용을 반영했습니다.');
+           }
+           return true;
+         })().finally(() => { cloudRefreshPromise = null; });
+         return cloudRefreshPromise;
+       }
+
+       function stopRealtimeSync() {
+         if (realtimeChannel && cloud) cloud.removeChannel(realtimeChannel);
+         realtimeChannel = null;
+       }
+
+       function startRealtimeSync() {
+         stopRealtimeSync();
+         if (!cloud || !signedInUser) return;
+         realtimeChannel = cloud
+           .channel(`harukan-sync-${signedInUser.id}`)
+           .on('postgres_changes', {
+             event: '*',
+             schema: 'public',
+             table: 'harukan_data',
+             filter: `user_id=eq.${signedInUser.id}`
+           }, payload => {
+             const incomingUpdatedAt = payload?.new?.updated_at;
+             if (incomingUpdatedAt && incomingUpdatedAt === lastServerUpdatedAt) return;
+             setTimeout(() => refreshCloudIfNewer({ silent: false }), 80);
+           })
+           .subscribe();
        }
 
        function updateAuthUI() {
@@ -1925,44 +2196,63 @@
            setSyncBadge('연동 모듈 오류');
            return;
          }
-         const { data } = await cloud.auth.getSession();
+         const { data, error } = await cloud.auth.getSession();
+         if (error) {
+           cloudReady = false;
+           setSyncBadge('로그인 확인 오류');
+           return;
+         }
          signedInUser = data.session?.user || null;
          updateAuthUI();
-         if (signedInUser) await loadStateFromCloud();
+         if (signedInUser) {
+           cloudReady = false;
+           await loadStateFromCloud();
+           startRealtimeSync();
+         }
 
          cloud.auth.onAuthStateChange(async (event, session) => {
            const previousId = signedInUser?.id;
            const nextUser = session?.user || null;
 
-           // 명시적인 로그아웃일 때만 온라인 모드를 해제합니다.
-           // 파일 선택기 복귀나 토큰 갱신 중 session이 잠깐 비는 경우에는 기존 로그인 상태를 유지합니다.
            if (event === 'SIGNED_OUT') {
+             stopRealtimeSync();
              signedInUser = null;
              cloudReady = false;
+             lastServerUpdatedAt = null;
+             baseCloudState = null;
              updateAuthUI();
              setSyncBadge('로컬 저장');
              return;
            }
 
-           if (!nextUser) {
-             if (signedInUser) {
-               cloudReady = true;
-               setSyncBadge('온라인 연동 중', 'online');
-             }
-             return;
-           }
+           if (!nextUser) return;
 
            const userChanged = nextUser.id !== previousId;
            signedInUser = nextUser;
            updateAuthUI();
 
            if (userChanged) {
+             stopRealtimeSync();
              cloudReady = false;
+             lastServerUpdatedAt = null;
+             baseCloudState = null;
              await loadStateFromCloud();
-           } else {
-             cloudReady = true;
-             setSyncBadge('온라인 연동 중', 'online');
+             startRealtimeSync();
+           } else if (cloudReady) {
+             setSyncBadge(localDirty ? '저장 대기…' : '온라인 연동 중', localDirty ? 'saving' : 'online');
            }
+         });
+
+         document.addEventListener('visibilitychange', () => {
+           if (!document.hidden && signedInUser) refreshCloudIfNewer({ silent: true });
+         });
+         window.addEventListener('focus', () => {
+           if (!signedInUser) return;
+           if (Date.now() - lastCloudRefreshAt < 1500) return;
+           refreshCloudIfNewer({ silent: true });
+         });
+         window.addEventListener('online', () => {
+           if (signedInUser) refreshCloudIfNewer({ silent: false });
          });
        }
 
@@ -3646,10 +3936,15 @@
             await refreshSignedInUser();
             if (signedInUser) {
               clearTimeout(cloudSaveTimer);
-              cloudReady = true;
               updateAuthUI();
+              // 백업 복원 내용도 로컬 변경으로 표시한 뒤 서버 최신본과 병합합니다.
+              localDirty = true;
+              setSyncBadge('백업 업로드 준비 중…', 'saving');
+              await refreshCloudIfNewer({ silent: true });
+              cloudReady = true;
+              localDirty = true;
               setSyncBadge('백업 업로드 중…', 'saving');
-              const saved = await saveStateToCloud(true);
+              const saved = await queueCloudSave(true);
               if (saved) toast('백업 데이터를 불러와 온라인에도 저장했습니다.');
               else {
                 setSyncBadge('온라인 연동 오류');
