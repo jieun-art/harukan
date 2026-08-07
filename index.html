@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>하루칸 v2.35 온라인 · 월간 투두 & 5일 24시간 플래너</title>
+  <title>하루칸 v2.36 온라인 · 월간 투두 & 5일 24시간 플래너</title>
   <style>
     @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
 
@@ -642,7 +642,6 @@
       right: 5px;
       min-height: 24px;
       border: 1px solid color-mix(in srgb, var(--block-color) 74%, #000);
-      border-left: 5px solid color-mix(in srgb, var(--block-color) 72%, #000);
       border-radius: 12px;
       background: var(--block-color);
       color: var(--block-text);
@@ -653,13 +652,27 @@
       box-shadow: 0 5px 14px rgba(30,30,30,.07);
     }
     .time-block:hover { z-index: 10; filter: saturate(1.06); }
+    /* 완료 일정은 오늘을 중심으로만 잠시 흐려지고, 3일 이상 멀어지면 기록처럼 원래 색으로 복원됩니다. */
     .time-block.done {
       opacity: 1;
       color: #252525;
-      background: color-mix(in srgb, var(--block-color) 15%, transparent);
-      border-color: color-mix(in srgb, var(--block-color) 10%, transparent);
-      border-left-color: color-mix(in srgb, var(--block-color) 10%, transparent);
+      background: color-mix(in srgb, var(--block-color) 20%, transparent);
+      border-color: color-mix(in srgb, var(--block-color) 20%, transparent);
       box-shadow: none;
+    }
+    .time-block.done.done-near-1 {
+      background: color-mix(in srgb, var(--block-color) 40%, transparent);
+      border-color: color-mix(in srgb, var(--block-color) 40%, transparent);
+    }
+    .time-block.done.done-near-2 {
+      background: color-mix(in srgb, var(--block-color) 65%, transparent);
+      border-color: color-mix(in srgb, var(--block-color) 65%, transparent);
+    }
+    .time-block.done.done-restored {
+      color: var(--block-text);
+      background: var(--block-color);
+      border-color: color-mix(in srgb, var(--block-color) 74%, #000);
+      box-shadow: 0 5px 14px rgba(30,30,30,.07);
     }
     .time-block.remove-candidate {
       opacity: .48;
@@ -669,9 +682,21 @@
     }
     .time-block.done .block-title { text-decoration: line-through; }
     .time-block.done .block-title,
-    .time-block.done .block-time { opacity: .30; }
+    .time-block.done .block-time,
     .time-block.done .block-check,
-    .time-block.done .resize-handle { opacity: .30; }
+    .time-block.done .resize-handle { opacity: .20; }
+    .time-block.done.done-near-1 .block-title,
+    .time-block.done.done-near-1 .block-time,
+    .time-block.done.done-near-1 .block-check,
+    .time-block.done.done-near-1 .resize-handle { opacity: .40; }
+    .time-block.done.done-near-2 .block-title,
+    .time-block.done.done-near-2 .block-time,
+    .time-block.done.done-near-2 .block-check,
+    .time-block.done.done-near-2 .resize-handle { opacity: .65; }
+    .time-block.done.done-restored .block-title,
+    .time-block.done.done-restored .block-time,
+    .time-block.done.done-restored .block-check { opacity: 1; }
+    .time-block.done.done-restored .resize-handle { opacity: .35; }
     .block-title { font-size: 13px; font-weight: 900; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .block-time { font-size: 10px; color: inherit; opacity: .78; margin-top: 2px; }
     .block-check {
@@ -1139,7 +1164,7 @@
       .hour-line::after { left: 38px; }
       .hour-label { width: 34px; left: 0; padding-right: 3px; font-size: 9px; }
       .timeline-day-lane { border-left: 1px solid #e5e5e1; }
-      .time-block { left: 1px; right: 1px; min-height: 18px; border-left-width: 3px; border-radius: 5px; padding: 3px 13px 3px 3px; box-shadow: none; }
+      .time-block { left: 1px; right: 1px; min-height: 18px; border-radius: 5px; padding: 3px 13px 3px 3px; box-shadow: none; }
       .block-title { font-size: 8px; line-height: 1.15; }
       .block-time { display: none; }
       .block-check { right: 1px; top: 2px; transform: none; width: 12px; height: 12px; border-radius: 4px; }
@@ -1194,7 +1219,7 @@
           <div class="brand-mark">24</div>
           <div>
             <h1>하루칸</h1>
-            <p>월간 투두 · 반복 습관 · 5일 타임블록 · v2.35 온라인</p>
+            <p>월간 투두 · 반복 습관 · 5일 타임블록 · v2.36 온라인</p>
           </div>
         </div>
         <div class="top-actions">
@@ -2477,7 +2502,15 @@
           scheduled.forEach(o => {
             const c = occurrenceCategory(o);
             const block = document.createElement('div');
-            block.className = `time-block ${o.completed ? 'done' : ''}`;
+            const completedDistance = Math.abs(dateDiffDays(iso, todayISO));
+            const completedTone = completedDistance === 0
+              ? 'done-current'
+              : completedDistance === 1
+                ? 'done-near-1'
+                : completedDistance === 2
+                  ? 'done-near-2'
+                  : 'done-restored';
+            block.className = `time-block ${o.completed ? `done ${completedTone}` : ''}`;
             block.dataset.instanceId = o.instanceId;
             block.dataset.date = iso;
             block.style.setProperty('--block-color', c.color);
