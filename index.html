@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>하루칸 v2.43A 온라인 · 월간 투두 & 5일 24시간 플래너</title>
+  <title>하루칸 v2.44A 온라인 · 월간 투두 & 5일 24시간 플래너</title>
   <style>
     @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
 
@@ -988,8 +988,26 @@
     input[type="color"] { padding: 3px !important; height: 40px; }
     .hint { font-size: 12px; color: var(--muted); line-height: 1.6; background: #f7f7f3; border-radius: 13px; padding: 10px 11px; }
 
-    /* Font settings */
+    /* Settings */
     .settings-modal { width: min(820px, 100%); }
+    .day-start-setting {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: #fafaf8;
+      padding: 15px 16px;
+      margin-bottom: 18px;
+    }
+    .day-start-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+    .day-start-head strong { font-size: 15px; }
+    .day-start-head p { margin: 5px 0 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+    .day-start-current { flex: 0 0 auto; font-size: 18px; font-weight: 950; }
+    .day-start-control { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; margin-top: 13px; }
+    .day-start-time-wrap { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 13px; background: white; padding: 7px 10px; }
+    .day-start-time-wrap span { color: #70747a; font-size: 12px; font-weight: 900; white-space: nowrap; }
+    .day-start-time-wrap input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; padding: 3px 0; font: inherit; font-weight: 850; }
+    .day-start-preview { margin-top: 10px; padding: 9px 10px; border-radius: 12px; background: #f2f2ef; color: #676b71; font-size: 12px; line-height: 1.55; }
+
+    /* Font settings */
     .font-option-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1062,6 +1080,7 @@
     .mobile-panel-nav { display: none; }
 
     @media (max-width: 760px) {
+      .day-start-control { grid-template-columns: 1fr; }
       .inline-form { grid-template-columns: 1fr auto; }
       .inline-form > #categoryName { grid-column: 1 / -1; }
       .category-color-trigger { min-width: 126px; }
@@ -1219,7 +1238,7 @@
           <div class="brand-mark">24</div>
           <div>
             <h1>하루칸</h1>
-            <p>월간 투두 · 반복 습관 · 5일 타임블록 · v2.43A 온라인</p>
+            <p>월간 투두 · 반복 습관 · 5일 타임블록 · v2.44A 온라인</p>
           </div>
         </div>
         <div class="top-actions">
@@ -1506,6 +1525,21 @@
     <div class="modal wide settings-modal">
       <div class="modal-head"><h3>환경설정</h3><button class="btn icon modal-close">×</button></div>
       <div class="modal-body">
+        <div class="day-start-setting">
+          <div class="day-start-head">
+            <div>
+              <strong>하루 시작 시간</strong>
+              <p>생활 패턴에 맞춰 하루가 시작되는 시각을 정합니다. 이 시각 전의 새벽 시간은 전날의 하루에 이어서 표시됩니다.</p>
+            </div>
+            <span class="day-start-current" id="dayStartCurrentLabel">06:00</span>
+          </div>
+          <div class="day-start-control">
+            <label class="day-start-time-wrap" for="dayStartTime"><span>시작 시각</span><input id="dayStartTime" type="time" step="900" value="06:00" /></label>
+            <button type="button" class="btn" id="resetDayStartBtn">06:00 기본값</button>
+          </div>
+          <div class="day-start-preview" id="dayStartPreview">06:00부터 다음 날 05:59까지를 하나의 하루로 봅니다.</div>
+        </div>
+
         <div class="section-label" style="margin-top:0"><span>화면 글꼴</span><span id="currentFontLabel"></span></div>
         <div class="font-option-grid" id="fontOptionGrid"></div>
         <div class="font-current-preview" id="fontCurrentPreview">
@@ -1578,10 +1612,16 @@
       const MIN_DURATION = 30;
       const TIMELINE_BLOCK_GAP_PX = 1;
       const TIMELINE_OVERLAP_STEP_PX = 4;
-      const TIMELINE_START_MIN = 6 * 60; // 시간표 표시 순서: 06:00~23:59, 그 다음 00:00~05:59
+      const DEFAULT_DAY_START_MIN = 6 * 60;
 
-      const clockToTimelineMin = minute => (minute - TIMELINE_START_MIN + 1440) % 1440;
-      const timelineToClockMin = displayMinute => (displayMinute + TIMELINE_START_MIN) % 1440;
+      const normalizeDayStartMin = (value, fallback = DEFAULT_DAY_START_MIN) => {
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric)) return fallback;
+        return clamp(Math.round(numeric / SNAP) * SNAP, 0, 1440 - SNAP);
+      };
+      const currentDayStartMin = () => normalizeDayStartMin(state?.settings?.dayStartMin);
+      const clockToTimelineMin = minute => (minute - currentDayStartMin() + 1440) % 1440;
+      const timelineToClockMin = displayMinute => (displayMinute + currentDayStartMin()) % 1440;
       const timelineBlockHeightPx = duration => Math.max(MIN_DURATION - TIMELINE_BLOCK_GAP_PX, duration - TIMELINE_BLOCK_GAP_PX);
 
 
@@ -1608,6 +1648,14 @@
         const [h,m] = time.split(':').map(Number);
         return h * 60 + m;
       };
+      const currentCalendarDateISO = () => isoLocal(new Date());
+      const plannerDateISO = (date = new Date(), dayStartMin = currentDayStartMin()) => {
+        const d = new Date(date);
+        const clockMin = d.getHours() * 60 + d.getMinutes();
+        if (clockMin < normalizeDayStartMin(dayStartMin)) d.setDate(d.getDate() - 1);
+        return isoLocal(d);
+      };
+      const currentPlannerDateISO = () => plannerDateISO(new Date());
       const escapeHTML = text => String(text ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','"':'&quot;'}[c]));
       const isValidISODate = value => {
         if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))) return false;
@@ -1647,13 +1695,13 @@
         return changed;
       }
 
-      const today = new Date();
-      const todayISO = isoLocal(today);
-
-      const defaultState = () => ({
+      const defaultState = () => {
+        const now = new Date();
+        const defaultPlannerDate = plannerDateISO(now, DEFAULT_DAY_START_MIN);
+        return {
         version: 2,
-        selectedDate: todayISO,
-        viewMonth: `${today.getFullYear()}-${pad(today.getMonth()+1)}`,
+        selectedDate: defaultPlannerDate,
+        viewMonth: defaultPlannerDate.slice(0, 7),
         categories: [
           { id: 'cat_study', name: '과제·공부', color: '#ff8f80' },
           { id: 'cat_class', name: '수업·회의', color: '#8cb887' },
@@ -1670,9 +1718,11 @@
         ddayOverrides: {},
         settings: {
           fontKey: 'joseon',
-          lastDdayColor: null
+          lastDdayColor: null,
+          dayStartMin: DEFAULT_DAY_START_MIN
         }
-      });
+        };
+      };
 
       let state = loadState();
       if (normalizeStateDurations(state)) {
@@ -1737,7 +1787,7 @@
           merged.ddays = (Array.isArray(parsed.ddays) ? parsed.ddays : []).map((item, index) => ({
             id: String(item?.id || uid(`dday${index}`)),
             title: String(item?.title || '제목 없는 D-Day'),
-            date: isValidISODate(item?.date) ? item.date : todayISO,
+            date: isValidISODate(item?.date) ? item.date : currentCalendarDateISO(),
             color: isHexColor(item?.color) ? item.color : '#ff8f80'
           }));
           merged.habitCompletions = parsed.habitCompletions || {};
@@ -1746,6 +1796,7 @@
           merged.ddayCompletions = parsed.ddayCompletions || {};
           merged.ddayOverrides = parsed.ddayOverrides || {};
           merged.settings = { ...defaultState().settings, ...(parsed.settings || {}) };
+          merged.settings.dayStartMin = normalizeDayStartMin(merged.settings.dayStartMin);
           return merged;
         } catch (err) {
           console.error(err);
@@ -1840,6 +1891,7 @@
            state.ddayCompletions = remote.ddayCompletions || {};
            state.ddayOverrides = remote.ddayOverrides || {};
            state.settings = { ...defaultState().settings, ...(remote.settings || {}) };
+           state.settings.dayStartMin = normalizeDayStartMin(state.settings.dayStartMin);
            migratedRemoteDurations = normalizeStateDurations(state);
            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
            applyFont(state.settings.fontKey, false);
@@ -1963,6 +2015,35 @@
         }
       };
 
+      function renderDayStartSettings() {
+        const startMin = currentDayStartMin();
+        const input = $('#dayStartTime');
+        const currentLabel = $('#dayStartCurrentLabel');
+        const preview = $('#dayStartPreview');
+        if (input) input.value = minutesToTime(startMin);
+        if (currentLabel) currentLabel.textContent = minutesToTime(startMin);
+        if (preview) {
+          const endMin = (startMin + 1439) % 1440;
+          preview.textContent = `${minutesToTime(startMin)}부터 다음 날 ${minutesToTime(endMin)}까지를 하나의 하루로 봅니다. 시간표와 ‘오늘’ 기준도 함께 바뀝니다.`;
+        }
+      }
+
+      function applyDayStart(value, shouldSave = true, showToast = false) {
+        const raw = typeof value === 'string' ? timeToMinutes(value) : value;
+        const nextStart = normalizeDayStartMin(raw);
+        const oldPlannerToday = currentPlannerDateISO();
+        state.settings = { ...defaultState().settings, ...(state.settings || {}), dayStartMin: nextStart };
+        const nextPlannerToday = currentPlannerDateISO();
+        if (state.selectedDate === oldPlannerToday && nextPlannerToday !== oldPlannerToday) {
+          state.selectedDate = nextPlannerToday;
+          state.viewMonth = nextPlannerToday.slice(0, 7);
+        }
+        renderDayStartSettings();
+        if (shouldSave) saveState();
+        renderAll();
+        if (showToast) toast(`하루 시작 시간을 ${minutesToTime(nextStart)}로 변경했습니다.`);
+      }
+
       function currentFontKey() {
         const key = state.settings?.fontKey;
         return FONT_OPTIONS[key] ? key : 'joseon';
@@ -2045,7 +2126,7 @@
         return state.tasks.find(t => t.id === instanceId)?.date || state.selectedDate;
       }
 
-      function dateDiffDays(targetISO, baseISO = todayISO) {
+      function dateDiffDays(targetISO, baseISO = currentCalendarDateISO()) {
         const a = parseISO(targetISO);
         const b = parseISO(baseISO);
         return Math.round((a - b) / 86400000);
@@ -2316,6 +2397,7 @@
       }
 
       function renderCalendar() {
+        const plannerTodayISO = currentPlannerDateISO();
         const view = viewMonthDate();
         const y = view.getFullYear(), m = view.getMonth();
         els.monthLabel.textContent = `${y}년 ${m+1}월`;
@@ -2332,7 +2414,7 @@
           const occ = getOccurrencesForDate(iso).filter(o => o.kind !== 'habit');
           const incomplete = occ.filter(o => !o.completed);
           const cell = document.createElement('button');
-          cell.className = `day-cell ${d.getMonth() === m ? '' : 'outside'} ${iso === state.selectedDate ? 'selected' : ''} ${iso === todayISO ? 'today' : ''} ${d.getDay() === 0 ? 'sun' : ''} ${d.getDay() === 6 ? 'sat' : ''}`;
+          cell.className = `day-cell ${d.getMonth() === m ? '' : 'outside'} ${iso === state.selectedDate ? 'selected' : ''} ${iso === plannerTodayISO ? 'today' : ''} ${d.getDay() === 0 ? 'sun' : ''} ${d.getDay() === 6 ? 'sat' : ''}`;
           const done = occ.filter(o => o.completed).length;
           const previews = incomplete.slice(0,3).map(o => {
             const c = occurrenceCategory(o);
@@ -2388,10 +2470,11 @@
       }
 
       function renderSelectedDay() {
+        const plannerTodayISO = currentPlannerDateISO();
         const d = selectedDateObj();
         els.selectedWeekday.textContent = WEEK_EN[d.getDay()];
         els.selectedDayNum.textContent = d.getDate();
-        els.selectedDateTitle.textContent = state.selectedDate === todayISO ? '오늘 할 일' : `${d.getMonth()+1}월 ${d.getDate()}일 할 일`;
+        els.selectedDateTitle.textContent = state.selectedDate === plannerTodayISO ? '오늘 할 일' : `${d.getMonth()+1}월 ${d.getDate()}일 할 일`;
         const occ = getOccurrencesForDate(state.selectedDate);
         const completed = occ.filter(o => o.completed).length;
         els.selectedDateSubtitle.textContent = `${WEEK_KO[d.getDay()]}요일 · ${completed}/${occ.length} 완료`;
@@ -2497,15 +2580,16 @@
       }
 
       function renderTimeline() {
+        const plannerTodayISO = currentPlannerDateISO();
         const dates = timelineDates();
         els.timelineDateRow.innerHTML = '<div class="timeline-date-spacer" aria-hidden="true"></div>';
         dates.forEach(iso => {
           const d = parseISO(iso);
           const button = document.createElement('button');
           button.type = 'button';
-          button.className = `timeline-date-cell ${iso === todayISO ? 'today' : ''} ${iso === state.selectedDate ? 'selected' : ''}`;
+          button.className = `timeline-date-cell ${iso === plannerTodayISO ? 'today' : ''} ${iso === state.selectedDate ? 'selected' : ''}`;
           button.dataset.date = iso;
-          button.innerHTML = `<strong>${d.getMonth()+1}/${d.getDate()} ${WEEK_KO[d.getDay()]}</strong><small>${iso === todayISO ? '오늘' : iso.slice(0,4)}</small>`;
+          button.innerHTML = `<strong>${d.getMonth()+1}/${d.getDate()} ${WEEK_KO[d.getDay()]}</strong><small>${iso === plannerTodayISO ? '오늘' : iso.slice(0,4)}</small>`;
           button.addEventListener('click', () => {
             state.selectedDate = iso;
             state.viewMonth = iso.slice(0,7);
@@ -2517,18 +2601,18 @@
 
         els.timelineCanvas.querySelectorAll('.hour-line').forEach(n => n.remove());
         for (let displayHour=0; displayHour<24; displayHour++) {
-          const clockHour = (displayHour + 6) % 24;
+          const clockMin = (currentDayStartMin() + displayHour * 60) % 1440;
           const line = document.createElement('div');
           line.className = 'hour-line';
           line.style.top = `${displayHour*HOUR_PX}px`;
-          line.innerHTML = `<span class="hour-label">${pad(clockHour)}:00</span>`;
+          line.innerHTML = `<span class="hour-label">${minutesToTime(clockMin)}</span>`;
           els.timelineCanvas.insertBefore(line, els.timelineLanes);
         }
 
         els.timelineLanes.innerHTML = '';
         dates.forEach((iso, dayIndex) => {
           const lane = document.createElement('div');
-          lane.className = `timeline-day-lane ${iso === todayISO ? 'today' : ''}`;
+          lane.className = `timeline-day-lane ${iso === plannerTodayISO ? 'today' : ''}`;
           lane.dataset.date = iso;
           lane.dataset.dayIndex = String(dayIndex);
           const scheduled = getOccurrencesForDate(iso)
@@ -2547,7 +2631,7 @@
             overlapEnds[overlapLevel] = displayEnd;
             const c = occurrenceCategory(o);
             const block = document.createElement('div');
-            const completedDistance = Math.abs(dateDiffDays(iso, todayISO));
+            const completedDistance = Math.abs(dateDiffDays(iso, plannerTodayISO));
             const completedTone = completedDistance === 0
               ? 'done-current'
               : completedDistance === 1
@@ -2566,7 +2650,7 @@
             block.style.zIndex = String(1 + Math.min(overlapLevel, 9));
             block.style.top = `${displayStart}px`;
             block.style.height = `${timelineBlockHeightPx(o.duration)}px`;
-            block.innerHTML = `<div class="block-title">${escapeHTML(o.title)}</div><div class="block-time">${minutesToTime(o.startMin)}–${minutesToTime(o.startMin+o.duration)}</div><button class="block-check" title="완료"><span class="block-check-mark">${o.completed ? '✓' : ''}</span></button><div class="resize-handle"></div>`;
+            block.innerHTML = `<div class="block-title">${escapeHTML(o.title)}</div><div class="block-time">${minutesToTime(o.startMin)}–${minutesToTime((o.startMin+o.duration) % 1440)}</div><button class="block-check" title="완료"><span class="block-check-mark">${o.completed ? '✓' : ''}</span></button><div class="resize-handle"></div>`;
             block.querySelector('.block-check').addEventListener('pointerdown', e => e.stopPropagation());
             block.querySelector('.block-check').addEventListener('click', e => { e.stopPropagation(); setOccurrenceComplete(o.instanceId, !o.completed); });
             block.addEventListener('dblclick', () => openOccurrenceEditor(o));
@@ -2574,7 +2658,7 @@
             lane.appendChild(block);
           });
 
-          if (iso === todayISO) {
+          if (iso === plannerTodayISO) {
             const now = new Date();
             const nowLine = document.createElement('div');
             nowLine.className = 'now-line';
@@ -3219,7 +3303,7 @@
       function resetHabitForm() {
         $('#habitForm').reset();
         $('#habitId').value = '';
-        $('#habitStartDate').value = todayISO;
+        $('#habitStartDate').value = currentPlannerDateISO();
         $('#habitDuration').value = '60';
         $('#habitCategory').value = state.categories[0]?.id || '';
         $('#deleteHabitBtn').hidden = true;
@@ -3255,7 +3339,7 @@
       function resetDdayForm() {
         $('#ddayForm').reset();
         $('#ddayId').value='';
-        $('#ddayDate').value=todayISO;
+        $('#ddayDate').value=currentCalendarDateISO();
         $('#ddayColor').value=defaultDdayColor();
         $('#deleteDdayBtn').hidden=true;
       }
@@ -3324,8 +3408,9 @@
         $('#prevMonthBtn').addEventListener('click', ()=>shiftMonth(-1));
         $('#nextMonthBtn').addEventListener('click', ()=>shiftMonth(1));
         $('#todayBtn').addEventListener('click', ()=>{
-          state.selectedDate=todayISO;
-          state.viewMonth=`${today.getFullYear()}-${pad(today.getMonth()+1)}`;
+          const plannerTodayISO = currentPlannerDateISO();
+          state.selectedDate = plannerTodayISO;
+          state.viewMonth = plannerTodayISO.slice(0, 7);
           saveState(); renderAll();
         });
         $('#newTaskBtn').addEventListener('click', ()=>openTaskModal());
@@ -3354,7 +3439,7 @@
             $('#newCategoryColorHex').textContent = nextHex;
           });
         });
-        $('#settingsBtn').addEventListener('click', ()=>{ renderFontSettings(); openModal('#settingsModalBackdrop'); });
+        $('#settingsBtn').addEventListener('click', ()=>{ renderDayStartSettings(); renderFontSettings(); openModal('#settingsModalBackdrop'); });
         $('#ddayManagerBtn').addEventListener('click', ()=>openDdayModal());
         $('#authBtn').addEventListener('click', ()=>{ updateAuthUI(); openModal('#authModalBackdrop'); });
         $('#sendLoginLinkBtn').addEventListener('click', sendMagicLink);
@@ -3369,6 +3454,8 @@
           toast('로그아웃했습니다. 이 기기에는 로컬 데이터가 남아 있습니다.');
         });
         $('#dataBtn').addEventListener('click', ()=>openModal('#dataModalBackdrop'));
+        $('#dayStartTime').addEventListener('change', e=>applyDayStart(e.target.value, true, true));
+        $('#resetDayStartBtn').addEventListener('click', ()=>applyDayStart(DEFAULT_DAY_START_MIN, true, true));
         $('#resetFontBtn').addEventListener('click', ()=>applyFont('joseon', true, true));
         $$('.modal-close').forEach(btn=>btn.addEventListener('click', ()=>closeModal(btn)));
         $$('.modal-backdrop').forEach(backdrop=>backdrop.addEventListener('mousedown', e=>{
@@ -3515,8 +3602,9 @@
       }
 
       function scrollTimelineToNow() {
-        let minute = 8 * 60;
-        if (timelineDates().includes(todayISO)) {
+        const plannerTodayISO = currentPlannerDateISO();
+        let minute = currentDayStartMin();
+        if (timelineDates().includes(plannerTodayISO)) {
           const now = new Date();
           minute = now.getHours() * 60 + now.getMinutes();
         } else {
@@ -3530,7 +3618,7 @@
       function exportData() {
         const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});
         const url=URL.createObjectURL(blob); const a=document.createElement('a');
-        a.href=url; a.download=`harukan-backup-${todayISO}.json`; a.click(); URL.revokeObjectURL(url);
+        a.href=url; a.download=`harukan-backup-${currentCalendarDateISO()}.json`; a.click(); URL.revokeObjectURL(url);
       }
 
       function importData(e) {
@@ -3544,6 +3632,7 @@
             state.ddayCompletions = parsed.ddayCompletions || {};
             state.ddayOverrides = parsed.ddayOverrides || {};
             state.settings = { ...defaultState().settings, ...(parsed.settings || {}) };
+            state.settings.dayStartMin = normalizeDayStartMin(state.settings.dayStartMin);
             normalizeStateDurations(state);
             applyFont(state.settings.fontKey, false);
 
@@ -3603,12 +3692,13 @@
 
       function addDemoDataIfEmpty() {
         if (state.tasks.length || state.habits.length || state.ddays.length) return;
+        const plannerTodayISO = currentPlannerDateISO();
         const study=state.categories[0].id, cls=state.categories[1].id, work=state.categories[2].id;
         state.tasks.push(
-          {id:uid('task'),title:'콘텐츠 과제 정리',date:todayISO,completed:false,categoryId:study,startMin:13*60,duration:120,note:'핵심 문제와 개선안 정리'},
-          {id:uid('task'),title:'시스템 발표 자료 만들기',date:todayISO,completed:false,categoryId:work,startMin:null,duration:180,note:''}
+          {id:uid('task'),title:'콘텐츠 과제 정리',date:plannerTodayISO,completed:false,categoryId:study,startMin:13*60,duration:120,note:'핵심 문제와 개선안 정리'},
+          {id:uid('task'),title:'시스템 발표 자료 만들기',date:plannerTodayISO,completed:false,categoryId:work,startMin:null,duration:180,note:''}
         );
-        state.habits.push({id:uid('habit'),title:'주간 시스템 수업',weekdays:[4],categoryId:cls,startDate:todayISO,startMin:10*60,duration:120});
+        state.habits.push({id:uid('habit'),title:'주간 시스템 수업',weekdays:[4],categoryId:cls,startDate:plannerTodayISO,startMin:10*60,duration:120});
         const future=new Date(); future.setDate(future.getDate()+14);
         state.ddays.push({id:uid('dday'),title:'개인과제 제출',date:isoLocal(future),color:'#ff8f80'});
         saveState();
@@ -3620,11 +3710,12 @@
       initEvents();
       addDemoDataIfEmpty();
       applyFont(currentFontKey(), false);
+      renderDayStartSettings();
       renderAll();
       initializeCloudAuth();
       initializeMobilePanelNavigation();
       setTimeout(() => { els.timelineScroll.scrollTop = 0; }, 100);
-      setInterval(()=>{ if(state.selectedDate===isoLocal(new Date())) renderTimeline(); }, 60000);
+      setInterval(()=>{ if(state.selectedDate===currentPlannerDateISO()) renderTimeline(); }, 60000);
     })();
   </script>
 
