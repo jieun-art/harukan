@@ -867,6 +867,43 @@
     }
     .weekday-pill input:checked + span { background: #222; color: white; border-color: #222; }
     .manager-list { display: grid; gap: 8px; }
+
+    /* D-Day/습관 관리창: 입력 영역은 고정하고 등록 목록 영역만 독립적으로 스크롤합니다. */
+    .manager-modal {
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .manager-modal > .modal-head { flex: 0 0 auto; }
+    .manager-modal > .modal-body {
+      min-height: 0;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      padding-bottom: 0;
+    }
+    .manager-sticky-form {
+      position: relative;
+      flex: 0 0 auto;
+      z-index: 2;
+      margin: 0;
+      padding: 0 0 12px;
+      background: #fff;
+      border-bottom: 1px solid var(--line);
+      box-shadow: 0 8px 16px rgba(30,30,25,.045);
+    }
+    .manager-list-scroll {
+      min-height: 0;
+      flex: 1 1 auto;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      padding: 0 0 18px;
+      scrollbar-gutter: stable;
+    }
+    .manager-list-scroll .section-label {
+      margin-top: 14px;
+      padding-top: 2px;
+    }
     .manager-row {
       display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px;
       border: 1px solid var(--line); border-radius: 15px; padding: 10px;
@@ -1256,7 +1293,7 @@
         </div>
       </div>
       <div class="dday-strip" id="ddayStrip">
-        <button class="dday-title" id="ddayManagerBtn">D-DAY<br>＋ 추가</button>
+        <button class="dday-title" id="ddayManagerBtn">D-DAY<br>관리</button>
         <div class="dday-empty">등록한 D-Day가 없습니다.</div>
       </div>
     </header>
@@ -1398,10 +1435,10 @@
   </div>
 
   <div class="modal-backdrop" id="habitModalBackdrop">
-    <div class="modal wide">
+    <div class="modal wide manager-modal">
       <div class="modal-head"><h3>주간 습관 · 반복 일정</h3><button class="btn icon modal-close">×</button></div>
       <div class="modal-body">
-        <form id="habitForm">
+        <form id="habitForm" class="manager-sticky-form">
           <input type="hidden" id="habitId" />
           <div class="form-grid">
             <div class="field full"><label for="habitTitle">반복 일정 이름</label><input id="habitTitle" required maxlength="80" placeholder="예: 매주 목요일 시스템 수업" /></div>
@@ -1409,7 +1446,13 @@
               <label>반복 요일</label>
               <div class="weekday-pills" id="habitWeekdays"></div>
             </div>
-            <div class="field"><label for="habitCategory">색상 분류</label><select id="habitCategory"></select></div>
+            <div class="field">
+              <label for="habitCategory">색상 분류</label>
+              <div class="category-select-control">
+                <span class="task-category-dot" id="habitCategoryDot" aria-hidden="true"></span>
+                <select id="habitCategory"></select>
+              </div>
+            </div>
             <div class="field"><label for="habitStartDate">반복 시작일</label><input id="habitStartDate" type="date" required /></div>
             <div class="field"><label for="habitStart">기본 시작 시간</label><input id="habitStart" type="time" step="900" /></div>
             <div class="field"><label for="habitDuration">기본 소요 시간</label><select id="habitDuration"></select></div>
@@ -1420,8 +1463,10 @@
             <button type="submit" class="btn primary">습관 저장</button>
           </div>
         </form>
-        <div class="section-label"><span>등록된 반복 일정</span><span id="habitCountLabel"></span></div>
-        <div class="manager-list" id="habitManagerList"></div>
+        <div class="manager-list-scroll">
+          <div class="section-label"><span>등록된 반복 일정</span><span id="habitCountLabel"></span></div>
+          <div class="manager-list" id="habitManagerList"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -1502,10 +1547,10 @@
   </div>
 
   <div class="modal-backdrop" id="ddayModalBackdrop">
-    <div class="modal">
+    <div class="modal manager-modal">
       <div class="modal-head"><h3>D-Day 관리</h3><button class="btn icon modal-close">×</button></div>
       <div class="modal-body">
-        <form id="ddayForm">
+        <form id="ddayForm" class="manager-sticky-form">
           <input type="hidden" id="ddayId" />
           <div class="form-grid">
             <div class="field full"><label for="ddayTitle">이름</label><input id="ddayTitle" required maxlength="50" placeholder="예: 개인과제 제출" /></div>
@@ -1518,8 +1563,10 @@
             <button type="submit" class="btn primary" id="saveDdayBtn">저장</button>
           </div>
         </form>
-        <div class="section-label"><span>등록된 D-Day</span></div>
-        <div class="manager-list" id="ddayManagerList"></div>
+        <div class="manager-list-scroll">
+          <div class="section-label"><span>등록된 D-Day</span></div>
+          <div class="manager-list" id="ddayManagerList"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -1779,6 +1826,7 @@
         taskCategory: $('#taskCategory'),
         taskCategoryDot: $('#taskCategoryDot'),
         habitCategory: $('#habitCategory'),
+        habitCategoryDot: $('#habitCategoryDot'),
         taskDuration: $('#taskDuration'),
         habitDuration: $('#habitDuration'),
         unscheduleDropZone: $('#unscheduleDropZone'),
@@ -2652,6 +2700,11 @@
           const task = category(selectedCategoryId(els.taskCategory));
           els.taskCategoryDot.style.background = task.color;
           els.taskCategory.title = `${task.name} · ${task.color}`;
+        }
+        if (els.habitCategory && els.habitCategoryDot) {
+          const habit = category(selectedCategoryId(els.habitCategory));
+          els.habitCategoryDot.style.background = habit.color;
+          els.habitCategory.title = `${habit.name} · ${habit.color}`;
         }
       }
 
@@ -3616,6 +3669,7 @@
         $('#habitStartDate').value = currentPlannerDateISO();
         $('#habitDuration').value = '60';
         $('#habitCategory').value = state.categories[0]?.id || '';
+        updateCategoryIndicators();
         $('#deleteHabitBtn').hidden = true;
         $$('#habitWeekdays input').forEach(i=>i.checked=false);
       }
@@ -3626,6 +3680,7 @@
         $('#habitId').value = h.id;
         $('#habitTitle').value = h.title;
         $('#habitCategory').value = h.categoryId;
+        updateCategoryIndicators();
         $('#habitStartDate').value = h.startDate;
         $('#habitStart').value = h.startMin !== null ? minutesToTime(h.startMin) : '';
         $('#habitDuration').value = String(h.duration || 60);
@@ -3780,6 +3835,7 @@
 
         $('#quickTaskCategory').addEventListener('change', updateCategoryIndicators);
         $('#taskCategory').addEventListener('change', updateCategoryIndicators);
+        $('#habitCategory').addEventListener('change', updateCategoryIndicators);
 
         $('#quickAddForm').addEventListener('submit', e=>{
           e.preventDefault();
