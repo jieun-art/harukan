@@ -658,7 +658,7 @@
       box-shadow: 0 2px 7px rgba(30,30,30,.14);
     }
     .time-block:hover { filter: saturate(1.06); box-shadow: 0 4px 12px rgba(30,30,30,.18); }
-    /* 완료 일정은 오늘을 중심으로만 잠시 흐려지고, 3일 이상 멀어지면 기록처럼 원래 색으로 복원됩니다. */
+    /* 완료 일정은 오늘과 모든 미래 날짜에서 가장 연하게 표시하고, 과거는 1일/2일 단계 후 원래 색으로 복원됩니다. */
     .time-block.done {
       opacity: 1;
       color: #252525;
@@ -2924,12 +2924,13 @@
             overlapEnds[overlapLevel] = displayEnd;
             const c = occurrenceCategory(o);
             const block = document.createElement('div');
-            const completedDistance = Math.abs(dateDiffDays(iso, plannerTodayISO));
-            const completedTone = completedDistance === 0
+            const completedDayOffset = dateDiffDays(iso, plannerTodayISO);
+            const completedPastDistance = Math.abs(Math.min(completedDayOffset, 0));
+            const completedTone = completedDayOffset >= 0
               ? 'done-current'
-              : completedDistance === 1
+              : completedPastDistance === 1
                 ? 'done-near-1'
-                : completedDistance === 2
+                : completedPastDistance === 2
                   ? 'done-near-2'
                   : 'done-restored';
             block.className = `time-block ${o.completed ? `done ${completedTone}` : ''}`;
